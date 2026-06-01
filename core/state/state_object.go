@@ -418,6 +418,11 @@ func (s *stateObject) commitStorage(op *accountUpdate) {
 			continue
 		}
 		hash := crypto.Keccak256Hash(key[:])
+		if !trieContractStorageHash {
+			// only for genesis initialization, the storage key is not hashed and directly used in trie, so the hash is the same as the key
+			hash = key
+		}
+
 		if op.storages == nil {
 			op.storages = make(map[common.Hash][]byte)
 		}
