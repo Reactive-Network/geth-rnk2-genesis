@@ -53,6 +53,15 @@ type PrecompiledContract interface {
 	Name() string
 }
 
+// StatefulPrecompiledContract is a precompile that needs the EVM call frame — state
+// (via evm.StateDB), caller and value — rather than the pure Run(input). When a
+// registered precompile implements it, EVM.Call dispatches to RunStateful. Used by the
+// Reactive Network staking precompile (RNK tokenomics).
+type StatefulPrecompiledContract interface {
+	PrecompiledContract
+	RunStateful(evm *EVM, caller common.Address, value *uint256.Int, input []byte) ([]byte, error)
+}
+
 // PrecompiledContracts contains the precompiled contracts supported at the given fork.
 type PrecompiledContracts map[common.Address]PrecompiledContract
 

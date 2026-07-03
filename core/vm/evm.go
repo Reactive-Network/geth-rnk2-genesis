@@ -286,11 +286,23 @@ func (evm *EVM) Call(caller common.Address, addr common.Address, input []byte, g
 		evm.Context.Transfer(evm.StateDB, caller, addr, value)
 	}
 	if isPrecompile {
-		var stateDB StateDB
-		if evm.chainRules.IsAmsterdam {
-			stateDB = evm.StateDB
+		if sp, ok := p.(StatefulPrecompiledContract); ok {
+			// Stateful precompile: value has already been transferred to `addr` above,
+			// so the target account holds msg.value before the handler runs.
+			gasCost := p.RequiredGas(input)
+			if gas < gasCost {
+				ret, gas, err = nil, 0, ErrOutOfGas
+			} else {
+				gas -= gasCost
+				ret, err = sp.RunStateful(evm, caller, value, input)
+			}
+		} else {
+			var stateDB StateDB
+			if evm.chainRules.IsAmsterdam {
+				stateDB = evm.StateDB
+			}
+			ret, gas, err = RunPrecompiledContract(stateDB, p, addr, input, gas, evm.Config.Tracer)
 		}
-		ret, gas, err = RunPrecompiledContract(stateDB, p, addr, input, gas, evm.Config.Tracer)
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		code := evm.resolveCode(addr)
