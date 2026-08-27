@@ -60,6 +60,10 @@ jobs:
       - in_parallel:
           - get: app-git-concourse
             trigger: true
+            # Cluster git-resource ignores source.submodules; get param is required.
+            # testdata submodule checkout fails (missing tree / LFS).
+            params:
+              submodules: none
           - get: ci-shared
             trigger: true
       - task: render-and-validate
