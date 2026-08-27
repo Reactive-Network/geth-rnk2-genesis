@@ -1,9 +1,7 @@
 name: PR Format Validation
 
 on:
-  pull_request:
-    types: [opened, edited, synchronize]
-
+  workflow_dispatch:
 jobs:
   validate-pr:
     runs-on: ubuntu-latest
