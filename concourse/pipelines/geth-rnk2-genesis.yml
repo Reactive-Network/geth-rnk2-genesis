@@ -31,7 +31,6 @@ resources:
       branch: origin-rnk
       paths:
         - concourse/**
-      submodules: none
       username: ((github-access-token.username))
       password: ((github-access-token.password))
     webhook_token: ((webhook-token-geth-rnk2-genesis))
@@ -60,8 +59,8 @@ jobs:
       - in_parallel:
           - get: app-git-concourse
             trigger: true
-            # Cluster git-resource ignores source.submodules; get param is required.
-            # testdata submodule checkout fails (missing tree / LFS).
+            # git-resource source_schema rejects source.submodules; use get params.
+            # testdata submodule checkout fails (missing tree / LFS) without this.
             params:
               submodules: none
           - get: ci-shared
