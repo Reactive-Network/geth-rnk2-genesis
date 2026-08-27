@@ -1,7 +1,7 @@
 name: PR Format Validation
 
-'on':
-  workflow_dispatch: {}
+on:
+  workflow_dispatch:
 jobs:
   validate-pr:
     runs-on: ubuntu-latest
