@@ -1,0 +1,12 @@
+github-access-token:
+  username: git
+  password: CHANGE_ME
+
+ghcr-credentials:
+  username: CHANGE_ME
+  password: CHANGE_ME
+
+webhook-token-geth-rnk2-genesis: CHANGE_ME
+
+slack-notify:
+  secret: CHANGE_ME
