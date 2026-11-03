@@ -35,7 +35,8 @@ import (
 //     account's storage in this StateDB until the next Commit. A trie-key write after a raw-key read
 //     or write is refused with an error rather than ordered (TestATrieKeyWriteAfterARawAccessIsRefused).
 //   - The account must exist; a write to an absent account is refused.
-//   - It is not journaled: RevertToSnapshot does not undo it. Call it outside transaction execution.
+//   - It is not journaled: RevertToSnapshot does not undo it. Call it outside transaction execution;
+//     unenforced: nothing refuses a call made during EVM execution, whose write would survive a revert.
 //   - State history: the write records no raw-key origin, because there is no raw key. Under
 //     rawStorageKey history, which a pathdb node with noStorageWiping writes, the block carrying such a
 //     write therefore cannot be reverted: Recover across it fails with "failed to reset storage trie"
