@@ -73,6 +73,10 @@ type stateObject struct {
 	// made within the block.
 	uncommittedStorage Storage
 
+	// trieKeyWrites are the storage writes addressed by trie key since the last commit (RNK fork
+	// addition, rnk_trie_key_storage.go); nil when there are none.
+	trieKeyWrites *trieKeyStorage
+
 	// Cache flags.
 	dirtyCode bool // true if the code was updated
 
@@ -211,6 +215,11 @@ func (s *stateObject) GetCommittedState(key common.Hash) common.Hash {
 		s.originStorage[key] = common.Hash{} // track the empty slot as origin value
 		return common.Hash{}
 	}
+	// A slot written by trie key in this state (RNK fork addition) is served from that write.
+	if value, ok := s.trieKeyValue(key); ok {
+		s.originStorage[key] = value
+		return value
+	}
 	s.db.StorageLoaded++
 
 	start := time.Now()
@@ -307,7 +316,7 @@ func (s *stateObject) finalise() {
 // It assumes all the dirty storage slots have been finalized before.
 func (s *stateObject) updateTrie() (Trie, error) {
 	// Short circuit if nothing was accessed, don't trigger a prefetcher warning
-	if len(s.uncommittedStorage) == 0 {
+	if len(s.uncommittedStorage) == 0 && !s.trieKeyWritesPending() {
 		// Nothing was written, so we could stop early. Unless we have both reads
 		// and witness collection enabled, in which case we need to fetch the trie.
 		if s.db.witness == nil || len(s.originStorage) == 0 {
@@ -329,6 +338,12 @@ func (s *stateObject) updateTrie() (Trie, error) {
 			s.db.setError(err)
 			return nil, err
 		}
+	}
+	// Apply the storage writes addressed by trie key first (RNK fork addition): they precede every
+	// raw-key write to this account in time.
+	if err := s.applyTrieKeyWrites(tr); err != nil {
+		s.db.setError(err)
+		return nil, err
 	}
 	// Short circuit if nothing changed, don't bother with hashing anything
 	if len(s.uncommittedStorage) == 0 {
@@ -399,7 +414,7 @@ func (s *stateObject) updateRoot() {
 
 // commitStorage overwrites the clean storage with the storage changes and
 // fulfills the storage diffs into the given accountUpdate struct.
-func (s *stateObject) commitStorage(op *accountUpdate) {
+func (s *stateObject) commitStorage(op *accountUpdate) bool {
 	var (
 		encode = func(val common.Hash) []byte {
 			if val == (common.Hash{}) {
@@ -409,6 +424,9 @@ func (s *stateObject) commitStorage(op *accountUpdate) {
 			return blob
 		}
 	)
+	// The storage writes addressed by trie key (RNK fork addition) go first, so a raw-key write to the
+	// same slot overwrites their flat entry.
+	trieKeyWritten := s.commitTrieKeyWrites(op, encode)
 	for key, val := range s.pendingStorage {
 		// Skip the noop storage changes, it might be possible the value
 		// of tracked slot is same in originStorage and pendingStorage
@@ -436,12 +454,16 @@ func (s *stateObject) commitStorage(op *accountUpdate) {
 		}
 		origin := encode(s.originStorage[key])
 		op.storagesOriginByKey[key] = origin
-		op.storagesOriginByHash[hash] = origin
+		// A trie-key write to the same slot recorded the value before the block (RNK fork addition).
+		if _, recorded := op.storagesOriginByHash[hash]; !recorded {
+			op.storagesOriginByHash[hash] = origin
+		}
 
 		// Overwrite the clean value of storage slots
 		s.originStorage[key] = val
 	}
 	s.pendingStorage = make(Storage)
+	return trieKeyWritten
 }
 
 // commit obtains the account changes (metadata, storage slots, code) caused by
@@ -472,9 +494,10 @@ func (s *stateObject) commit() (*accountUpdate, *trienode.NodeSet, error) {
 			op.code.originHash = common.BytesToHash(s.origin.CodeHash)
 		}
 	}
-	// Commit storage changes and the associated storage trie
-	s.commitStorage(op)
-	if len(op.storages) == 0 {
+	// Commit storage changes and the associated storage trie. A trie-key write that only repaired the
+	// trie leaves op.storages empty and still changed the trie (RNK fork addition).
+	trieKeyWritten := s.commitStorage(op)
+	if len(op.storages) == 0 && !trieKeyWritten {
 		// nothing changed, don't bother to commit the trie
 		s.origin = s.data.Copy()
 		return op, nil, nil
@@ -524,6 +547,7 @@ func (s *stateObject) deepCopy(db *StateDB) *stateObject {
 		pendingStorage:     s.pendingStorage.Copy(),
 		dirtyStorage:       s.dirtyStorage.Copy(),
 		uncommittedStorage: s.uncommittedStorage.Copy(),
+		trieKeyWrites:      s.trieKeyWrites.copy(),
 		dirtyCode:          s.dirtyCode,
 		selfDestructed:     s.selfDestructed,
 		newContract:        s.newContract,
